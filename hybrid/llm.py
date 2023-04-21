@@ -19,7 +19,7 @@ def llm_chat(messages: list[dict], temperature=0.5, max_tokens: Optional[int] = 
     )
 
     usage = response["usage"]
-    logger.info(
+    logger.debug(
         f"OpenAI Usage: prompt {usage['prompt_tokens']}, completion {usage['completion_tokens']}, total {usage['total_tokens']}"
     )
 
