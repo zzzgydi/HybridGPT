@@ -6,8 +6,8 @@ from hybrid.logger import logger
 def agent_create(objective: str) -> list[dict]:
     task_format = {
         "kr": "key result",
-        "reasoning": "reasoning for why this key result is important",
-        "todo": ["a list of todo to achieve this key result"]
+        "thought": "show the your thought about to achieve this key result step by step",
+        "todo": ["a list of todo to achieve this key result"],
     }
     formatted_response = json.dumps(task_format, indent=2)
 

@@ -9,7 +9,8 @@ if __name__ == "__main__":
     with Spinner():
         krs = agent_create(objective=objective)
 
-    logger.info(krs)
+    for kr in krs:
+        logger.info(kr)
 
     for kr in krs:
         command = agent_exec(objective=objective, kr=kr)

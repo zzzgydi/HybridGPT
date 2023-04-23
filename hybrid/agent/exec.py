@@ -22,7 +22,7 @@ done: finish the todo.
 
 The mandatory response format is:
 
-<reason>[YOUR_REASONING]</reason>
+<thought>[YOUR INNER THOUGHT]</thought>
 <command>[COMMAND]</command>
 <argument>[ARGUMENT]</argument>
 
@@ -33,19 +33,19 @@ DO NOT INCLUDE EXTRA TEXT BEFORE OR AFTER THE COMMAND.
 
 Examples:
 
-<reason>Search for websites relevant to salami pizza.</reason>
+<thought>Search for websites relevant to salami pizza.</thought>
 <command>web_search</command>
 <argument>salami pizza</argument>
 
-<reason>Scrape information about Apples.</reason>
+<thought>Scrape information about Apples.</thought>
 <command>web_summary</command>
 <argument>https://en.wikipedia.org/wiki/Apple </argument>
 
-<reason>Write 'Hello, world!' to file</reason>
+<thought>Write 'Hello, world!' to file</thought>
 <command>write_file</command>
 <argument>Hello, world!</argument>
 
-<reason>I have gathered enough information.</reason>
+<thought>I have gathered enough information.</thought>
 <command>done</command>
 """
 
@@ -70,10 +70,16 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
     #     generate_command_string(cmd) for cmd in commands
     # )
 
-    for todo in kr["todo"]:
+    for todo in kr.get("todo", []):
         short_term = []
         step_count = 0
         while True:
+            if step_count > 6:
+                logger.warn(
+                    "The maximum number of loops has been reached, current todo is done."
+                )
+                break
+
             role_prompt = (
                 f"You are an autonomous agent.\n"
                 "You has and ONLY has the following abilities:\n"
@@ -84,7 +90,8 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
             )
             system_prompt = (
                 # f"OBJECTIVE: {objective}\n"
-                f"Key Result: {kr['kr']}\n"
+                f"Key Result: {kr.get('kr')}\n"
+                f"Key Result Inner Thought: {kr.get('thought')}\n"
                 f"Current TODO: {todo}"
                 # f"Current step: {step_count + 1}\n\n"
                 # 'IMPORTANT:\nBe sure to send a separate "done" command within 5 steps.'
@@ -123,11 +130,7 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
             messages = [
                 {"role": "system", "content": role_prompt},
                 {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"This reminds you of these events from your past:\n{context}",
-                },
-                # {"role": "user", "content": constraint_prompt},
+                {"role": "user", "content": f"CONTEXT:\n{context}"},
                 {"role": "user", "content": f"INSTRUCTIONS:\n{INSTRUCTIONS}"},
             ]
 
@@ -135,7 +138,7 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
                 split_context = short_term[context_index:]
                 context = "\n\n".join(
                     (
-                        f"Reason: {command['reason']}\n"
+                        f"Thought: {command['thought']}\n"
                         f"Command: {command['name']}, args: {command['args']}\n"
                         f"Result: \n{result}"
                     )
@@ -144,11 +147,7 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
                 messages = [
                     {"role": "system", "content": role_prompt},
                     {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": f"This reminds you of these events from your past:\n{context}",
-                    },
-                    # {"role": "user", "content": constraint_prompt},
+                    {"role": "user", "content": f"CONTEXT:\n{context}"},
                     {"role": "user", "content": f"INSTRUCTIONS:\n{INSTRUCTIONS}"},
                 ]
                 prompt_tokens = count_message_tokens(messages)
@@ -174,14 +173,14 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
 
                 logger.info(f"KR: {kr['kr']}")
                 logger.info(f"Todo: {todo}")
-                logger.info(f"Reason: {command['reason']}")
+                logger.info(f"Thought: {command['thought']}")
                 logger.info(f"Command: {command['name']}, args: {command['args']}")
 
                 cmd_name = command["name"]
                 cmd_args = command["args"]
 
                 if cmd_name == "done":
-                    logger.info("TODO DONE!!!")
+                    logger.info("Result: TODO DONE!!!")
                     break
                 if cmd_name == "web_search":
                     ddg_results = ddg(cmd_args, max_results=2)
@@ -189,6 +188,7 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
                         f"{e['title']}   {e['href']}" for e in ddg_results
                     )
                     short_term.append((command, ddg_results))
+                    logger.info(f'Result: "{command}" {ddg_results}')
                 elif cmd_name == "web_summary":
                     try:
                         with urlopen(cmd_args) as response:
@@ -202,12 +202,13 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
                         logger.error(e)
                         response_text = str(e)
 
+                    response_text = re.sub(r"\n+", "\n", response_text)
+                    logger.info(f'Result: "{command}" {response_text}')
                     short_term.append((command, response_text))
                 else:
+                    logger.info(f'Result: "{command}" ok')
                     short_term.append((command, "ok"))
 
-            except json.JSONDecodeError:
-                logger.error(f"Invalid JSON response: {response}")
             except Exception as e:
                 logger.error(e)
 
@@ -217,7 +218,7 @@ def agent_exec(objective: str, kr: dict) -> Optional[dict]:
 
 def parse_response(response: str) -> dict:
     """
-    <reason>[YOUR_REASONING]</reason>
+    <thought>[YOUR THOUGHT]</thought>
     <command>[COMMAND]</command>
     <argument>[ARGUMENT]</argument>
     """
@@ -225,12 +226,12 @@ def parse_response(response: str) -> dict:
     PATTERN = r"<(\w+)>(.*?)</\w+>"
     matches = re.findall(PATTERN, response)
 
-    reason = matches[0][1]
+    thought = matches[0][1]
     command = matches[1][1]
     argument = matches[2][1]
 
     return {
-        "reason": reason,
+        "thought": thought,
         "name": command,
         "args": argument,
     }
